@@ -24,13 +24,25 @@ def _plain_article_text(body: str) -> str:
 
 
 async def _insert_image_into_empty_body(page, image_path: Path) -> bool:
-    """Insert the image while the article body is still empty, when Dzen exposes its image controls."""
+    """Open Dzen's image popup in an empty block and upload through its actual file input."""
     body_box = page.locator(TEXTBOX_SELECTOR).nth(1)
     try:
-        # Dzen may expose the image control only for an active, empty paragraph.
         await body_box.click(timeout=10_000)
         await page.wait_for_timeout(500)
 
+        # First locate the upload input directly; the popup may already be open.
+        file_input_selector = (
+            'input.article-editor-desktop--image-popup__fileInput-35, '
+            'input[type="file"][accept*="image/png"]'
+        )
+        file_input = page.locator(file_input_selector).last
+        if await file_input.count() and await file_input.is_visible():
+            await file_input.set_input_files(str(image_path), timeout=10_000)
+            await page.wait_for_timeout(2500)
+            log.info("Изображение загружено через input редактора Дзена: %s", image_path.name)
+            return True
+
+        # Otherwise activate the image insertion control while the paragraph is empty.
         buttons = page.get_by_role("button", name=IMAGE_BUTTON_PATTERN)
         visible_button = None
         for i in range(await buttons.count()):
@@ -49,33 +61,20 @@ async def _insert_image_into_empty_body(page, image_path: Path) -> bool:
                     visible_button = candidate.first
                     break
 
-        if visible_button is not None:
-            async with page.expect_file_chooser(timeout=10_000) as chooser_info:
-                await visible_button.click(timeout=10_000)
-            chooser = await chooser_info.value
-            await chooser.set_files(str(image_path))
-            await page.wait_for_timeout(2500)
-            log.info("Изображение добавлено через кнопку пустого блока: %s", image_path.name)
-            return True
+        if visible_button is None:
+            log.error("Не найдена кнопка открытия окна изображения в пустом блоке.")
+            return False
 
-        # Some editor versions expose a file input without a consistently named button.
-        file_inputs = page.locator('input[type="file"]')
-        for i in range(await file_inputs.count()):
-            file_input = file_inputs.nth(i)
-            try:
-                await file_input.set_input_files(str(image_path), timeout=5_000)
-                await page.wait_for_timeout(2500)
-                log.info("Изображение передано через input[type=file]: %s", image_path.name)
-                return True
-            except Exception:
-                continue
-
-        log.error("Не найдена кнопка загрузки изображения в пустом блоке; пробовал также input[type=file].")
-        return False
+        await visible_button.click(timeout=10_000)
+        popup_input = page.locator(file_input_selector).last
+        await popup_input.wait_for(state="attached", timeout=10_000)
+        await popup_input.set_input_files(str(image_path), timeout=10_000)
+        await page.wait_for_timeout(2500)
+        log.info("Изображение загружено через поле файла в окне Дзена: %s", image_path.name)
+        return True
     except Exception as exc:
-        log.error("Не удалось вставить изображение в пустой блок статьи: %s", exc)
+        log.error("Не удалось загрузить изображение через окно Дзена: %s", exc)
         return False
-
 
 async def _create_draft(title: str, body: str, image_path: Path | None = None) -> dict:
     if DRY_RUN:

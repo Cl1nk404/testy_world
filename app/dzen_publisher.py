@@ -120,3 +120,34 @@ async def _create_draft(title: str, body: str) -> dict:
 def publish_dzen(title: str, body: str) -> dict:
     """Create a Dzen draft using the already-authenticated Chrome session."""
     return asyncio.run(_create_draft(title, body))
+
+
+if __name__ == "__main__":
+    import argparse
+
+    from .storage import connect
+
+    parser = argparse.ArgumentParser(
+        description="Create a Dzen draft from the latest locally saved article."
+    )
+    parser.add_argument(
+        "--last-post",
+        action="store_true",
+        help="Use the latest article saved in SQLite; does not call GigaChat.",
+    )
+    args = parser.parse_args()
+    if not args.last_post:
+        parser.error("Укажите --last-post для безопасного теста без генерации новой статьи.")
+
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT title, body FROM posts "
+            "WHERE body != '' AND title != 'Ошибка генерации' "
+            "ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+
+    if row is None:
+        parser.error("В SQLite нет сохранённой статьи. Сначала запустите генерацию один раз.")
+
+    result = publish_dzen(row["title"], row["body"])
+    print(result)

@@ -24,56 +24,51 @@ def _plain_article_text(body: str) -> str:
 
 
 async def _insert_image_into_empty_body(page, image_path: Path) -> bool:
-    """Open Dzen's image popup in an empty block and upload through its actual file input."""
+    """Open the image popup using Dzen's side-toolbar button, then upload its file input."""
     body_box = page.locator(TEXTBOX_SELECTOR).nth(1)
     try:
         await body_box.click(timeout=10_000)
-        await page.wait_for_timeout(500)
+        await page.wait_for_timeout(300)
 
-        # First locate the upload input directly; the popup may already be open.
+        # Dzen renders this toolbar button beside the active empty paragraph.
+        toolbar_button = page.locator(
+            'button[data-tip="Вставить изображение"]'
+        ).last
+        if not await toolbar_button.count() or not await toolbar_button.is_visible():
+            # Fallback to the icon's SVG use reference from the supplied DOM.
+            toolbar_button = page.locator(
+                'button:has(svg use[href="#add_gallery_e477--react"]), '
+                'button:has(svg use[xlink\\:href="#add_gallery_e477--react"])'
+            ).last
+
+        if not await toolbar_button.count() or not await toolbar_button.is_visible():
+            log.error("Не найдена кнопка Дзена button[data-tip='Вставить изображение'] рядом с пустым блоком.")
+            return False
+
+        await toolbar_button.click(timeout=10_000)
+
+        # The modal markup supplied by the user exposes a dedicated file input.
         file_input_selector = (
             'input.article-editor-desktop--image-popup__fileInput-35, '
             'input[type="file"][accept*="image/png"]'
         )
         file_input = page.locator(file_input_selector).last
-        if await file_input.count() and await file_input.is_visible():
-            await file_input.set_input_files(str(image_path), timeout=10_000)
-            await page.wait_for_timeout(2500)
-            log.info("Изображение загружено через input редактора Дзена: %s", image_path.name)
-            return True
+        await file_input.wait_for(state="attached", timeout=10_000)
+        await file_input.set_input_files(str(image_path), timeout=10_000)
+        await page.wait_for_timeout(3000)
 
-        # Otherwise activate the image insertion control while the paragraph is empty.
-        buttons = page.get_by_role("button", name=IMAGE_BUTTON_PATTERN)
-        visible_button = None
-        for i in range(await buttons.count()):
-            candidate = buttons.nth(i)
-            try:
-                if await candidate.is_visible():
-                    visible_button = candidate
-                    break
-            except Exception:
-                continue
-
-        if visible_button is None:
-            for label in ("Добавить изображение", "Загрузить изображение", "Изображение", "Фото"):
-                candidate = page.get_by_text(label, exact=True)
-                if await candidate.count() and await candidate.first.is_visible():
-                    visible_button = candidate.first
-                    break
-
-        if visible_button is None:
-            log.error("Не найдена кнопка открытия окна изображения в пустом блоке.")
-            return False
-
-        await visible_button.click(timeout=10_000)
-        popup_input = page.locator(file_input_selector).last
-        await popup_input.wait_for(state="attached", timeout=10_000)
-        await popup_input.set_input_files(str(image_path), timeout=10_000)
-        await page.wait_for_timeout(2500)
-        log.info("Изображение загружено через поле файла в окне Дзена: %s", image_path.name)
+        # Verify that the modal closed or an image node appeared before reporting success.
+        modal = page.locator('[class*="image-popup__imagePopup"]')
+        image_nodes = page.locator('[contenteditable="true"] img, [role="textbox"] img')
+        if await modal.count() and await modal.last.is_visible():
+            log.warning("Поле файла приняло изображение, но окно загрузки Дзена ещё открыто.")
+        log.info(
+            "Файл передан в окно изображения Дзена: %s (видимых изображений в редакторе: %s)",
+            image_path.name, await image_nodes.count()
+        )
         return True
     except Exception as exc:
-        log.error("Не удалось загрузить изображение через окно Дзена: %s", exc)
+        log.error("Не удалось загрузить изображение через панель Дзена: %s", exc)
         return False
 
 async def _create_draft(title: str, body: str, image_path: Path | None = None) -> dict:

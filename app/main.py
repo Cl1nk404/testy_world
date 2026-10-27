@@ -3,10 +3,11 @@ import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from apscheduler.schedulers.blocking import BlockingScheduler
-from .config import TIMEZONE, POST_HOUR, POST_MINUTE, LOG_DIR, OUTPUT_DIR, DRY_RUN
+from .config import TIMEZONE, POST_HOUR, POST_MINUTE, LOG_DIR, OUTPUT_DIR, DRY_RUN, PUBLISHER
 from .storage import init_db, topics_used, already_ran, save_post
 from .ai_generator import generate_post, validate_post
 from .publisher import publish
+from .dzen_publisher import publish_dzen
 
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(
@@ -36,9 +37,14 @@ def run_once(force=False):
             raise ValueError("Проверка качества не пройдена: " + "; ".join(issues))
         out = OUTPUT_DIR / f"{run_date}.md"
         out.write_text(post["body"].rstrip() + "\n", encoding="utf-8")
-        result = publish(post["title"], post["body"])
+        if PUBLISHER == "telegram":
+            result = publish(post["title"], post["body"])
+        elif PUBLISHER == "dzen":
+            result = publish_dzen(post["title"], post["body"])
+        else:
+            raise ValueError(f"Неизвестный PUBLISHER={PUBLISHER!r}; допустимы telegram или dzen")
         save_post(run_date, post["topic"], post["title"], post["body"], result["status"], result.get("message_id"))
-        log.info("Готово. Тема=%r, статус=%s, файл=%s", post["topic"], result["status"], out)
+        log.info("Готово. Тема=%r, статус=%s, файл=%s%s", post["topic"], result["status"], out, ", URL=" + result["url"] if result.get("url") else "")
     except Exception as exc:
         log.exception("Ежедневный запуск завершился ошибкой")
         save_post(run_date, "не определена", "Ошибка генерации", "", "error", error=str(exc))

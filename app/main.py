@@ -8,6 +8,7 @@ from .storage import init_db, topics_used, already_ran, save_post
 from .ai_generator import generate_post, validate_post
 from .publisher import publish
 from .dzen_publisher import publish_dzen
+from .image_generator import generate_dish_image
 
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(
@@ -37,10 +38,14 @@ def run_once(force=False):
             raise ValueError("Проверка качества не пройдена: " + "; ".join(issues))
         out = OUTPUT_DIR / f"{run_date}.md"
         out.write_text(post["body"].rstrip() + "\n", encoding="utf-8")
+        image_path = None
+        if PUBLISHER == "dzen":
+            log.info("Пробую создать изображение для статьи...")
+            image_path = generate_dish_image(post["title"], post["body"], run_date)
         if PUBLISHER == "telegram":
             result = publish(post["title"], post["body"])
         elif PUBLISHER == "dzen":
-            result = publish_dzen(post["title"], post["body"])
+            result = publish_dzen(post["title"], post["body"], image_path=image_path)
         else:
             raise ValueError(f"Неизвестный PUBLISHER={PUBLISHER!r}; допустимы telegram или dzen")
         save_post(run_date, post["topic"], post["title"], post["body"], result["status"], result.get("message_id"))

@@ -148,6 +148,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Create a Dzen draft from the latest locally saved article.")
     parser.add_argument("--last-post", action="store_true", help="Use latest saved article; does not call GigaChat.")
+    parser.add_argument("--with-image", action="store_true", help="Generate one image via Cloudflare and insert it before the text.")
     args = parser.parse_args()
     if not args.last_post:
         parser.error("Укажите --last-post для безопасного теста без генерации новой статьи.")
@@ -157,5 +158,13 @@ if __name__ == "__main__":
         ).fetchone()
     if row is None:
         parser.error("В SQLite нет сохранённой статьи. Сначала запустите генерацию один раз.")
-    result = publish_dzen(row["title"], row["body"])
+    image_path = None
+    if args.with_image:
+        from .image_generator import generate_dish_image
+        from .config import TIMEZONE
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        run_date = datetime.now(ZoneInfo(TIMEZONE)).date().isoformat()
+        image_path = generate_dish_image(row["title"], row["body"], run_date)
+    result = publish_dzen(row["title"], row["body"], image_path=image_path)
     print(result)

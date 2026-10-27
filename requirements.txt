@@ -1,4 +1,4 @@
-google-genai>=1.0.0
+gigachat>=0.1.39
 python-telegram-bot>=21.0
 APScheduler>=3.10.4
 python-dotenv>=1.0.1

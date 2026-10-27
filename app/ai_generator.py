@@ -1,16 +1,41 @@
 import json
-from google import genai
-from google.genai import types
-from .config import GEMINI_API_KEY, GEMINI_MODEL, PROMPT_PATH
+from gigachat import GigaChat
+from gigachat.models import Chat, Messages, MessagesRole
+from .config import (
+    GIGACHAT_CREDENTIALS,
+    GIGACHAT_MODEL,
+    GIGACHAT_SCOPE,
+    GIGACHAT_BASE_URL,
+    GIGACHAT_VERIFY_SSL_CERTS,
+    PROMPT_PATH,
+)
 from .topic_selector import candidates_for_date
-
-def _client():
-    if not GEMINI_API_KEY:
-        raise RuntimeError("Не задан GEMINI_API_KEY в файле .env")
-    return genai.Client(api_key=GEMINI_API_KEY)
 
 def _read_prompt():
     return PROMPT_PATH.read_text(encoding="utf-8")
+
+def _generate_text(prompt: str) -> str:
+    if not GIGACHAT_CREDENTIALS:
+        raise RuntimeError("Не задан GIGACHAT_CREDENTIALS в файле .env")
+    # Не отключаем проверку TLS по умолчанию: при необходимости настройте корневой сертификат Минцифры.
+    with GigaChat(
+        credentials=GIGACHAT_CREDENTIALS,
+        scope=GIGACHAT_SCOPE,
+        base_url=GIGACHAT_BASE_URL,
+        verify_ssl_certs=GIGACHAT_VERIFY_SSL_CERTS,
+        timeout=90,
+        max_retries=2,
+    ) as client:
+        request = Chat(
+            model=GIGACHAT_MODEL,
+            messages=[Messages(role=MessagesRole.USER, content=prompt)],
+            temperature=0.8,
+        )
+        response = client.chat(request)
+    try:
+        return response.choices[0].message.content or ""
+    except (AttributeError, IndexError, TypeError) as exc:
+        raise RuntimeError("GigaChat вернул ответ в неожиданном формате") from exc
 
 def generate_post(day, previous_topics):
     season, candidates = candidates_for_date(day)
@@ -22,34 +47,24 @@ def generate_post(day, previous_topics):
 Темы-кандидаты: {json.dumps(candidates, ensure_ascii=False)}
 Недавно использованные темы, не повторяй их: {json.dumps(previous_topics[-80:], ensure_ascii=False)}
 
-Выбери одну подходящую тему самостоятельно. Верни только корректный JSON с ключами:
+Выбери одну подходящую тему самостоятельно. Верни только корректный JSON без Markdown-ограждений с ключами:
 topic, title, body.
 В body включи весь готовый к публикации текст, кроме отдельного технического поля topic.
 Исторические утверждения не выдумывай. Художественную историю явно обозначай как вымысел.
 Заголовок должен быть первым предложением публикации и быть короче 140 символов.
 """
-    response = _client().models.generate_content(
-        model=GEMINI_MODEL,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            temperature=0.8,
-            response_mime_type="application/json",
-            response_schema={
-                "type": "OBJECT",
-                "properties": {
-                    "topic": {"type": "STRING"},
-                    "title": {"type": "STRING"},
-                    "body": {"type": "STRING"}
-                },
-                "required": ["topic", "title", "body"]
-            }
-        )
-    )
-    raw = response.text or ""
-    data = json.loads(raw)
+    raw = _generate_text(prompt).strip()
+    if raw.startswith("```json"):
+        raw = raw[7:]
+    elif raw.startswith("```"):
+        raw = raw[3:]
+    if raw.endswith("```"):
+        raw = raw[:-3]
+    data = json.loads(raw.strip())
     for key in ("topic", "title", "body"):
         if not isinstance(data.get(key), str) or not data[key].strip():
             raise ValueError(f"ИИ вернул пустое или некорректное поле: {key}")
+    data["topic"] = data["topic"].strip()
     data["title"] = data["title"].strip()
     data["body"] = data["body"].strip()
     return data

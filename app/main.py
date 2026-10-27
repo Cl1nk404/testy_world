@@ -39,7 +39,7 @@ def run_once(force=False):
         out = OUTPUT_DIR / f"{run_date}.md"
         out.write_text(post["body"].rstrip() + "\n", encoding="utf-8")
         image_path = None
-        if PUBLISHER == "dzen":
+        if PUBLISHER == "dzen" and not DRY_RUN:
             log.info("Пробую создать изображение для статьи...")
             image_path = generate_dish_image(post["title"], post["body"], run_date)
         if PUBLISHER == "telegram":

@@ -26,10 +26,14 @@ PUBLISHER = os.getenv("PUBLISHER", "telegram").strip().lower()
 DZEN_CDP_URL = os.getenv("DZEN_CDP_URL", "http://127.0.0.1:9222").strip()
 DZEN_EDITOR_URL = os.getenv("DZEN_EDITOR_URL", "https://dzen.ru/profile/editor/create").strip()
 ENABLE_IMAGE = env_bool("ENABLE_IMAGE", False)
+CLOUDFLARE_ACCOUNT_ID = os.getenv("CLOUDFLARE_ACCOUNT_ID", "").strip()
+CLOUDFLARE_API_TOKEN = os.getenv("CLOUDFLARE_API_TOKEN", "").strip()
+CLOUDFLARE_IMAGE_MODEL = os.getenv("CLOUDFLARE_IMAGE_MODEL", "@cf/black-forest-labs/flux-1-schnell").strip()
+IMAGE_OUTPUT_DIR = ROOT / os.getenv("IMAGE_OUTPUT_DIR", "output/images")
 DATABASE_PATH = ROOT / os.getenv("DATABASE_PATH", "data/recipes.db")
 OUTPUT_DIR = ROOT / os.getenv("OUTPUT_DIR", "output")
 LOG_DIR = ROOT / os.getenv("LOG_DIR", "logs")
 PROMPT_PATH = ROOT / "prompts" / "recipe_post.txt"
 
-for directory in (DATABASE_PATH.parent, OUTPUT_DIR, LOG_DIR):
+for directory in (DATABASE_PATH.parent, OUTPUT_DIR, LOG_DIR, IMAGE_OUTPUT_DIR):
     directory.mkdir(parents=True, exist_ok=True)

@@ -23,13 +23,13 @@ def _plain_article_text(body: str) -> str:
     return text.strip()
 
 
-async def _insert_image_at_article_start(page, image_path: Path) -> bool:
-    """Try to insert an image at the start of the body; failure is non-fatal."""
+async def _insert_image_into_empty_body(page, image_path: Path) -> bool:
+    """Insert the image while the article body is still empty, when Dzen exposes its image controls."""
+    body_box = page.locator(TEXTBOX_SELECTOR).nth(1)
     try:
-        body_box = page.locator(TEXTBOX_SELECTOR).nth(1)
+        # Dzen may expose the image control only for an active, empty paragraph.
         await body_box.click(timeout=10_000)
-        await page.keyboard.press("Control+Home")
-        await page.wait_for_timeout(300)
+        await page.wait_for_timeout(500)
 
         buttons = page.get_by_role("button", name=IMAGE_BUTTON_PATTERN)
         visible_button = None
@@ -49,19 +49,31 @@ async def _insert_image_at_article_start(page, image_path: Path) -> bool:
                     visible_button = candidate.first
                     break
 
-        if visible_button is None:
-            log.error("Не удалось найти кнопку добавления изображения в редакторе Дзена.")
-            return False
+        if visible_button is not None:
+            async with page.expect_file_chooser(timeout=10_000) as chooser_info:
+                await visible_button.click(timeout=10_000)
+            chooser = await chooser_info.value
+            await chooser.set_files(str(image_path))
+            await page.wait_for_timeout(2500)
+            log.info("Изображение добавлено через кнопку пустого блока: %s", image_path.name)
+            return True
 
-        async with page.expect_file_chooser(timeout=10_000) as chooser_info:
-            await visible_button.click(timeout=10_000)
-        chooser = await chooser_info.value
-        await chooser.set_files(str(image_path))
-        await page.wait_for_timeout(2500)
-        log.info("Файл изображения передан редактору Дзена: %s", image_path.name)
-        return True
+        # Some editor versions expose a file input without a consistently named button.
+        file_inputs = page.locator('input[type="file"]')
+        for i in range(await file_inputs.count()):
+            file_input = file_inputs.nth(i)
+            try:
+                await file_input.set_input_files(str(image_path), timeout=5_000)
+                await page.wait_for_timeout(2500)
+                log.info("Изображение передано через input[type=file]: %s", image_path.name)
+                return True
+            except Exception:
+                continue
+
+        log.error("Не найдена кнопка загрузки изображения в пустом блоке; пробовал также input[type=file].")
+        return False
     except Exception as exc:
-        log.error("Не удалось вставить изображение в статью; оставляю текст без изображения: %s", exc)
+        log.error("Не удалось вставить изображение в пустой блок статьи: %s", exc)
         return False
 
 
@@ -104,17 +116,28 @@ async def _create_draft(title: str, body: str, image_path: Path | None = None) -
                     raise RuntimeError("Не удалось открыть редактор статьи. Проверьте DZEN_EDITOR_URL и интерфейс канала.") from exc
 
             textboxes = page.locator(TEXTBOX_SELECTOR)
-            count = await textboxes.count()
-            if count < 2:
-                raise RuntimeError(f"В редакторе найдено полей ввода: {count}, ожидалось минимум 2.")
+            if await textboxes.count() < 2:
+                raise RuntimeError(f"В редакторе найдено полей ввода: {await textboxes.count()}, ожидалось минимум 2.")
 
             await textboxes.nth(0).fill(title, timeout=15_000)
-            await textboxes.nth(1).fill(_plain_article_text(body), timeout=15_000)
-
+            article_text = _plain_article_text(body)
+            image_inserted = False
             if image_path and image_path.exists():
-                await _insert_image_at_article_start(page, image_path)
+                # Important: attempt image insertion before typing body text. In Dzen the image
+                # control may only appear when the current paragraph is empty.
+                image_inserted = await _insert_image_into_empty_body(page, image_path)
             elif image_path:
                 log.error("Файл изображения не найден: %s; продолжаю без изображения.", image_path)
+
+            body_box = page.locator(TEXTBOX_SELECTOR).nth(1)
+            if image_inserted:
+                # Do not call fill() after image insertion: it can replace the editor contents,
+                # including the uploaded image. Type into the body after the inserted image.
+                await body_box.click(timeout=10_000)
+                await page.keyboard.press("Control+End")
+                await page.keyboard.insert_text(article_text)
+            else:
+                await body_box.fill(article_text, timeout=15_000)
 
             await page.wait_for_timeout(5000)
             for _ in range(12):
@@ -152,6 +175,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if not args.last_post:
         parser.error("Укажите --last-post для безопасного теста без генерации новой статьи.")
+    if args.with_image and DRY_RUN:
+        parser.error("Для теста редактора с изображением установите DRY_RUN=false в .env; иначе браузер не откроется.")
     with connect() as conn:
         row = conn.execute(
             "SELECT title, body FROM posts WHERE body != '' AND title != 'Ошибка генерации' ORDER BY id DESC LIMIT 1"

@@ -245,6 +245,14 @@ def generate_content(topic: str, user_prompt: str) -> str:
 def send_telegram(destination: str, body: str, image_path=None):
     if not BOT_TOKEN:
         raise RuntimeError("TELEGRAM_BOT_TOKEN не настроен на сервере")
+    if image_path and os.path.isfile(image_path):
+        with open(image_path, "rb") as photo:
+            photo_response = requests.post(
+                f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",
+                data={"chat_id": destination}, files={"photo": photo}, timeout=90)
+        photo_payload = photo_response.json()
+        if not photo_response.ok or not photo_payload.get("ok"):
+            raise RuntimeError(photo_payload.get("description", "Telegram sendPhoto error"))
     response = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
         json={"chat_id": destination, "text": body, "disable_web_page_preview": False}, timeout=30)
     payload = response.json()
@@ -268,7 +276,11 @@ def process_due_jobs():
             db.commit()
             try:
                 body = generate_content(topic, prompt)
-                message_id = send_telegram(channel.destination, body)
+                image_path = None
+                if channel.generate_image or settings.generate_image:
+                    image_path = generate_dish_image(
+                        topic, body, datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S"), force=True)
+                message_id = send_telegram(channel.destination, body, image_path=image_path)
                 post.body = body
                 post.status = "sent"
                 db.commit()

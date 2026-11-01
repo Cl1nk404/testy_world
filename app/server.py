@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker, Session
 from gigachat import GigaChat
-from gigachat.models import Chat, Messages, MessagesRole
+from gigachat.models import Chat, Messages, MessagesRole\nfrom .image_generator import generate_dish_image
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/app.db")
 SECRET_KEY = os.getenv("APP_SECRET_KEY", "")
@@ -241,7 +241,7 @@ def generate_content(topic: str, user_prompt: str) -> str:
         raise RuntimeError("Модель вернула пустой пост")
     return text.strip()
 
-def send_telegram(destination: str, body: str):
+def send_telegram(destination: str, body: str, image_path=None):
     if not BOT_TOKEN:
         raise RuntimeError("TELEGRAM_BOT_TOKEN не настроен на сервере")
     response = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",

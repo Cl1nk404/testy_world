@@ -122,7 +122,7 @@ def current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(db_s
 
 class Credentials(BaseModel):
     username: str = Field(min_length=3, max_length=80, pattern=r"^[a-zA-Z0-9_.-]+$")
-    password: str = Field(min_length=10, max_length=128)
+    password: str = Field(min_length=10, max_length=72)
 
 class SettingsInput(BaseModel):
     topic: str = Field(min_length=1, max_length=500)

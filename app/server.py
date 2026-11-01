@@ -20,7 +20,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker, Session
 from gigachat import GigaChat
-from gigachat.models import Chat, Messages, MessagesRole\nfrom .image_generator import generate_dish_image
+from gigachat.models import Chat, Messages, MessagesRole
+from .image_generator import generate_dish_image
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/app.db")
 SECRET_KEY = os.getenv("APP_SECRET_KEY", "")

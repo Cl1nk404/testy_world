@@ -193,7 +193,7 @@ def add_channel(data: ChannelInput, user: User = Depends(current_user), db: Sess
         raise HTTPException(400, "Допустимы private или channel")
     if not BOT_TOKEN:
         raise HTTPException(503, "На сервере не настроен TELEGRAM_BOT_TOKEN")
-    row = Channel(user_id=user.id, platform="telegram", **data.model_dump())
+    row = Channel(user_id=user.id, platform="telegram", next_run_at=datetime.now(timezone.utc) + timedelta(minutes=data.interval_minutes), **data.model_dump())
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -208,6 +208,7 @@ def edit_channel(channel_id: int, data: ChannelInput, user: User = Depends(curre
         raise HTTPException(400, "Допустимы private или channel")
     for key, value in data.model_dump().items():
         setattr(row, key, value)
+    row.next_run_at = datetime.now(timezone.utc) + timedelta(minutes=data.interval_minutes)
     db.commit()
     return {"ok": True}
 

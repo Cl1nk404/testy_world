@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Вкусные истории мира</title>
+<style>
+:root{font-family:Inter,system-ui,Arial,sans-serif;color:#20251f;background:#f4f5f1}*{box-sizing:border-box}body{margin:0}header{background:#17251d;color:white;padding:22px max(20px,calc((100% - 1050px)/2));display:flex;justify-content:space-between;align-items:center}main{max-width:1050px;margin:30px auto;padding:0 18px}.panel{background:white;border:1px solid #e2e7df;border-radius:14px;padding:22px;margin:16px 0;box-shadow:0 3px 16px #15251a0a}h1{font-size:24px;margin:0}h2{font-size:18px;margin:0 0 16px}label{display:block;font-size:13px;font-weight:650;margin:12px 0 6px}input,textarea,select{width:100%;padding:11px;border:1px solid #ccd5cb;border-radius:8px;font:inherit;background:#fff}textarea{min-height:105px;resize:vertical}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.check{display:flex;align-items:center;gap:9px}.check input{width:auto}button{border:0;border-radius:8px;background:#28583b;color:white;padding:11px 16px;font-weight:650;cursor:pointer}button.secondary{background:#e8eee8;color:#26382c}button.danger{background:#9e3434}.muted{color:#69756c;font-size:13px}.hidden{display:none}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.channel{border:1px solid #e1e6df;padding:14px;border-radius:10px;margin:10px 0}.status{font-size:12px;color:#506657}.notice{padding:12px;background:#f0f5ef;border-radius:8px;margin:10px 0}.error{color:#a52d2d}.post{white-space:pre-wrap;border-top:1px solid #eee;padding:12px 0;font-size:14px}
+@media(max-width:650px){.grid{grid-template-columns:1fr}header{padding:18px}main{margin:15px auto}.panel{padding:16px}}
+</style>
+</head>
+<body>
+<header><h1>Вкусные истории мира</h1><button id="logout" class="secondary hidden">Выйти</button></header>
+<main>
+<section id="auth" class="panel">
+<h2>Вход в аккаунт</h2>
+<div class="grid"><div><label>Логин</label><input id="username" autocomplete="username" minlength="3"></div><div><label>Пароль (от 10 символов)</label><input id="password" type="password" autocomplete="current-password"></div></div>
+<div class="row" style="margin-top:16px"><button id="login">Войти</button><button id="register" class="secondary">Создать аккаунт</button></div><p id="authMsg" class="muted"></p>
+</section>
+<div id="dashboard" class="hidden">
+<section class="panel"><h2>Генерация публикаций</h2>
+<label>Основная тема</label><input id="topic" placeholder="Например: история кухни разных стран">
+<label>Ваш промпт для нейросети</label><textarea id="prompt" placeholder="Стиль, структура, длина, аудитория, ограничения..."></textarea>
+<div class="grid"><div><label>Интервал генерации, минут (минимум 15)</label><input id="interval" type="number" min="15" max="525600" value="1440"></div><div><label>Часовой пояс (IANA)</label><input id="timezone" value="Europe/Riga" placeholder="Europe/Riga"></div></div>
+<label class="check"><input id="image" type="checkbox"> Генерировать изображение к посту</label>
+<button id="saveSettings" style="margin-top:14px">Сохранить настройки</button><p id="settingsMsg" class="muted"></p>
+</section>
+<section class="panel"><h2>Каналы и автопостинг</h2>
+<div class="notice"><b>Telegram — доступная интеграция.</b><br><span class="muted">Добавьте бота в канал администратором с правом публикации. Для личных сообщений пользователь должен открыть бота и нажать Start. Узнать свой chat ID можно через проверенного Telegram-бота для просмотра ID или через getUpdates своего бота после отправки ему сообщения.</span></div>
+<div id="channels"></div>
+<h2 style="margin-top:22px">Добавить Telegram-канал или личные сообщения</h2>
+<label>Название</label><input id="chTitle" value="Мой Telegram">
+<label>Куда отправлять</label><select id="delivery"><option value="channel">Telegram-канал (например @my_channel)</option><option value="private">Личные сообщения (chat ID)</option></select>
+<label>Адрес канала или chat ID</label><input id="destination" placeholder="@my_channel или числовой chat ID">
+<div class="grid"><div><label>Интервал, минут</label><input id="chInterval" type="number" min="15" value="1440"></div><div><label>Часовой пояс</label><input id="chTimezone" value="Europe/Riga"></div></div>
+<label>Тема именно для этого канала (необязательно)</label><input id="chTopic" placeholder="Если пусто — общая тема">
+<label>Промпт именно для этого канала (необязательно)</label><textarea id="chPrompt" placeholder="Если пусто — общий промпт"></textarea>
+<label class="check"><input id="chImage" type="checkbox"> Генерировать изображение для этого канала</label>
+<label class="check"><input id="chEnabled" type="checkbox"> Включить автопостинг сразу после добавления</label>
+<button id="addChannel" style="margin-top:12px">Добавить канал</button><p id="channelMsg" class="muted"></p>
+</section>
+<section class="panel"><h2>История публикаций</h2><div id="posts" class="muted">Пока нет публикаций.</div></section>
+</div>
+</main>
+<script>
+const $=id=>document.getElementById(id);let token=sessionStorage.getItem("token")||"";
+async function api(path,method="GET",body){const r=await fetch(path,{method,headers:{"Content-Type":"application/json",...(token?{Authorization:"Bearer "+token}:{})},...(body?{body:JSON.stringify(body)}:{})});let d={};try{d=await r.json()}catch{}if(!r.ok)throw Error(d.detail||"Ошибка запроса");return d}
+function authView(on){$("auth").classList.toggle("hidden",on);$("dashboard").classList.toggle("hidden",!on);$("logout").classList.toggle("hidden",!on)}
+function authData(){return {username:$("username").value.trim(),password:$("password").value}}
+async function authenticate(path){$("authMsg").textContent="";try{const d=await api(path,"POST",authData());token=d.access_token;sessionStorage.setItem("token",token);authView(true);await loadAll()}catch(e){$("authMsg").textContent=e.message;$("authMsg").className="error"}}
+$("login").onclick=()=>authenticate("/api/login");$("register").onclick=()=>authenticate("/api/register");
+$("logout").onclick=()=>{token="";sessionStorage.removeItem("token");authView(false)};
+async function loadSettings(){const d=await api("/api/settings");$("topic").value=d.topic;$("prompt").value=d.user_prompt;$("interval").value=d.interval_minutes;$("timezone").value=d.timezone;$("image").checked=d.generate_image}
+$("saveSettings").onclick=async()=>{try{await api("/api/settings","PUT",{topic:$("topic").value,user_prompt:$("prompt").value,interval_minutes:+$("interval").value,timezone:$("timezone").value,generate_image:$("image").checked});$("settingsMsg").textContent="Настройки сохранены"}catch(e){$("settingsMsg").textContent=e.message}};
+async function loadChannels(){const list=await api("/api/channels");$("channels").innerHTML="";for(const c of list){const el=document.createElement("div");el.className="channel";const title=document.createElement("b");title.textContent=c.title+" · "+(c.delivery_type==="private"?"личные сообщения":"канал");const info=document.createElement("p");info.className="muted";info.textContent=c.destination+" · каждые "+c.interval_minutes+" мин · "+(c.enabled?"автопостинг включён":"выключен");const edit=document.createElement("button");edit.className="secondary";edit.textContent="Настроить";edit.onclick=()=>editChannel(c);const del=document.createElement("button");del.className="danger";del.textContent="Удалить";del.onclick=async()=>{if(confirm("Удалить этот канал?")){await api("/api/channels/"+c.id,"DELETE");await loadChannels()}};el.append(title,info,edit,del);$("channels").append(el)}}
+async function editChannel(c){const enabled=confirm("ОК — включить автопостинг. Отмена — выключить.");const interval=prompt("Интервал в минутах",c.interval_minutes);if(interval===null)return;const timezone=prompt("Часовой пояс",c.timezone);if(timezone===null)return;const topic=prompt("Тема канала (пусто — общая)",c.topic_override);if(topic===null)return;const promptText=prompt("Промпт канала (пусто — общий)",c.prompt_override);if(promptText===null)return;try{await api("/api/channels/"+c.id,"PUT",{delivery_type:c.delivery_type,destination:c.destination,title:c.title,enabled,interval_minutes:+interval,timezone,generate_image:c.generate_image,topic_override:topic,prompt_override:promptText});await loadChannels()}catch(e){alert(e.message)}}
+$("addChannel").onclick=async()=>{try{await api("/api/channels","POST",{delivery_type:$("delivery").value,destination:$("destination").value.trim(),title:$("chTitle").value,enabled:$("chEnabled").checked,interval_minutes:+$("chInterval").value,timezone:$("chTimezone").value,generate_image:$("chImage").checked,topic_override:$("chTopic").value,prompt_override:$("chPrompt").value});$("channelMsg").textContent="Канал добавлен";$("destination").value="";await loadChannels()}catch(e){$("channelMsg").textContent=e.message}};
+async function loadPosts(){const rows=await api("/api/posts");$("posts").innerHTML="";if(!rows.length){$("posts").textContent="Пока нет публикаций.";return}for(const p of rows){const el=document.createElement("div");el.className="post";const head=document.createElement("b");head.textContent=p.topic+" · "+p.status;const body=document.createElement("p");body.textContent=p.body||p.error||"";el.append(head,body);$("posts").append(el)}}
+async function loadAll(){try{await loadSettings();await loadChannels();await loadPosts()}catch(e){$("authMsg").textContent=e.message}}
+if(token){authView(true);loadAll().catch(()=>{token="";sessionStorage.removeItem("token");authView(false)})}
+</script>
+</body></html>

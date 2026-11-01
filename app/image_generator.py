@@ -16,7 +16,7 @@ from .config import (
 log = logging.getLogger("tasty_world.image")
 
 
-def generate_dish_image(title: str, body: str, run_date: str | None = None) -> Path | None:
+def generate_dish_image(title: str, body: str, run_date: str | None = None, force: bool = False) -> Path | None:
     """Generate one recipe image with Cloudflare Workers AI. Never retries or falls back."""
     if not ENABLE_IMAGE:
         log.info("Генерация изображения выключена (ENABLE_IMAGE=false).")
